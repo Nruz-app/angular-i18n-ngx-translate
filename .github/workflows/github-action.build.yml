@@ -1,0 +1,78 @@
+name: Angular I18N NGX TRANSLATE
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Git Semantic Version
+        uses: PaulHatch/semantic-version@v4.0.3
+        id: version
+        with:
+          major_pattern : "major"
+          minor_pattern : "feat"
+          format: "${major}.${minor}.${patch}-prerelease${increment}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm ci
+
+#      #Modificar Variable de entorno para producción
+#      - name: Crear environment.ts para producción (sin token)
+#        run: |
+#          mkdir -p src/environments
+#          echo "export const environment = {" > src/environments/environment.ts
+#          echo "  baseUrl: 'https://api.github.com/repos/angular/angular'," >> src/environments/environment.ts
+#          echo "};" >> src/environments/environment.ts
+
+      - name: Compilar proyecto Angular (producción)
+        run: npx ng build --configuration=production --base-href=/angular-i18n-ngx-translate/
+
+      - name: Instalar angular-cli-ghpages
+        run: npm install -g angular-cli-ghpages
+
+      - name: Deploy a GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@releases/v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          branch: gh-pages
+          folder: dist/i18n-app/browser
+          clean: true
+
+      - name: Docker Login
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USER" --password-stdin
+
+      - name: Build Docker Image
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build -t nruz176/angular-i18n-ngx-translate:$NEW_VERSION .
+          docker build -t nruz176/angular-i18n-ngx-translate:latest .
+
+      - name: Push Docker Image
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker push nruz176/angular-i18n-ngx-translate:$NEW_VERSION
+          docker push nruz176/angular-i18n-ngx-translate:latest
